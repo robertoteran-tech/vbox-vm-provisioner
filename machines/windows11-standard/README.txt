@@ -15,6 +15,16 @@ Recommended project locations
 ~/vbox-environment/machines/windows11-standard/vm.yaml
 ~/vbox-environment/isos/Win11_25H2_English_x64_v2.iso
 
+ISO
+---
+Place the Windows installer ISO in the project isos directory with this exact
+path:
+
+~/vbox-environment/isos/Win11_25H2_English_x64_v2.iso
+
+The path must match the installation.iso value in vm.yaml. If you use a
+different Windows ISO filename, update vm.yaml before running the provisioner.
+
 Host requirements
 -----------------
 Docker and VirtualBox must already be installed on the host. The Docker wrapper

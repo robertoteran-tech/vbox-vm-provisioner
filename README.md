@@ -58,6 +58,19 @@ This project does not install VirtualBox. The container uses these host paths:
 Large files such as ISOs, VDI disks, generated unattended files, and logs are
 ignored by Git.
 
+## ISO Files
+
+Place installer ISO files under the project `isos/` directory:
+
+```text
+/home/rob/vbox-environment/isos/Win11_25H2_English_x64_v2.iso
+/home/rob/vbox-environment/isos/kali-linux-2026.1-installer-amd64.iso
+```
+
+The filename must match the `installation.iso` value in the profile YAML. If
+you use a different ISO filename, update the matching `vm.yaml` before running
+the provisioner.
+
 ## Quick Start
 
 From the project directory:

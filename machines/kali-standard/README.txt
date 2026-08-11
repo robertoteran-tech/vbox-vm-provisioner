@@ -16,9 +16,13 @@ provides the Python runtime and mounts the host VirtualBox installation.
 
 ISO
 ---
-Place the Kali installer ISO here:
+Place the Kali installer ISO in the project isos directory with this exact
+path:
 
 ~/vbox-environment/isos/kali-linux-2026.1-installer-amd64.iso
+
+The path must match the installation.iso value in vm.yaml. If you use a
+different Kali ISO filename, update vm.yaml before running the provisioner.
 
 Secrets
 -------
