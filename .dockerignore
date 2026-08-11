@@ -1,0 +1,31 @@
+.git/
+__pycache__/
+*.py[cod]
+
+# Large local installation media
+isos/*
+!isos/.gitkeep
+
+# VirtualBox/generated artifacts
+*.vdi
+*.vmdk
+*.vhd
+*.hdd
+*.iso
+*.viso
+*.vbox-prev
+*.nvram
+*.sav
+*.log
+Logs/
+Snapshots/
+Unattended-*
+
+# Local environment/caches
+.venv/
+venv/
+env/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

@@ -24,7 +24,7 @@ storage:
   dynamic: true
 
 installation:
-  iso: /home/rob/vbox-environment/isos/Win11_25H2_English_x64_v2.iso
+  iso: ../../isos/Win11_25H2_English_x64_v2.iso
   # This ISO contains multiple Windows editions. Pin the edition so Windows
   # Setup does not stop at the product-key/edition screen.
   #

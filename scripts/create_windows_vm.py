@@ -12,7 +12,7 @@ The script:
   5. Creates and attaches a dynamically allocated VDI.
   6. Uses VirtualBox IUnattended to generate Windows Setup answer media.
   7. Creates the local Windows administrator account.
-  8. Supplies the Windows product key to the unattended installer.
+  8. Supplies the Windows product key when one is entered.
   9. Installs VirtualBox Guest Additions.
  10. Starts the VM so Windows installs without normal setup interaction.
 
@@ -22,8 +22,12 @@ Credentials are intentionally NOT stored in vm.yaml.
 from __future__ import annotations
 
 import argparse
+import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from getpass import getpass
 from pathlib import Path
 
@@ -40,17 +44,17 @@ except ImportError:
 
 try:
     from vboxapi import VirtualBoxManager
-except ImportError:
-    print(
-        "ERROR: vboxapi is not available in this Python installation.",
-        file=sys.stderr,
-    )
-    raise SystemExit(1)
+except ImportError as exc:
+    VirtualBoxManager = None
+    VBOXAPI_IMPORT_ERROR = exc
+else:
+    VBOXAPI_IMPORT_ERROR = None
 
 
 MIB = 1024 * 1024
 GIB = 1024 * MIB
 PRODUCT_KEY_RE = re.compile(r"^[A-Z0-9]{5}(?:-[A-Z0-9]{5}){4}$")
+INVALID_VM_NAME_RE = re.compile(r"[/\x00]|[\x01-\x1f]")
 
 
 def load_yaml(path: Path) -> dict:
@@ -69,6 +73,42 @@ def get_required(cfg: dict, *keys):
             raise KeyError("Missing required setting: " + ".".join(keys))
         cur = cur[key]
     return cur
+
+
+def resolve_config_path(value: str, config_path: Path) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = config_path.parent / path
+    return path.resolve()
+
+
+def validate_vm_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        raise ValueError("VM name cannot be empty.")
+    if INVALID_VM_NAME_RE.search(name):
+        raise ValueError(
+            "VM name cannot contain slashes, NUL bytes, or control characters."
+        )
+    return name
+
+
+def get_vm_name(default_name: str) -> str:
+    env_name = os.environ.get("VBOX_VM_NAME")
+    if env_name:
+        return validate_vm_name(env_name)
+
+    prompt = f"VM name [{default_name}]: "
+    while True:
+        try:
+            entered = input(prompt)
+        except EOFError:
+            return validate_vm_name(default_name)
+
+        try:
+            return validate_vm_name(entered or default_name)
+        except ValueError as exc:
+            print(exc)
 
 
 def normalize_product_key(value: str) -> str:
@@ -102,10 +142,10 @@ def get_install_credentials():
 
         break
 
-    product_key = input("Windows product key: ").strip()
+    product_key = input("Windows product key (blank to skip): ").strip()
 
     if not product_key:
-        raise RuntimeError("Windows product key cannot be empty.")
+        return password, ""
 
     return password, normalize_product_key(product_key)
 
@@ -169,6 +209,199 @@ def progress_wait(progress, action: str):
         )
 
 
+def run_vboxmanage(args: list[str], *, capture: bool = False):
+    cmd = ["VBoxManage", *args]
+    result = subprocess.run(
+        cmd,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.PIPE if capture else None,
+    )
+    return result.stdout if capture else ""
+
+
+def env_enabled(name: str) -> bool:
+    return os.environ.get(name, "").lower() in {"1", "true", "yes", "on"}
+
+
+def confirm_overwrite(name: str, detail: str) -> bool:
+    if env_enabled("VBOX_OVERWRITE"):
+        return True
+
+    print(detail)
+    answer = input(
+        f"Delete existing VM/files for {name!r} and recreate it? "
+        "Type yes to continue: "
+    )
+    return answer.strip().lower() == "yes"
+
+
+def write_created_vm_info(name: str, frontend: str, settings_file: Path):
+    info_file = os.environ.get("VBOX_CREATED_VM_INFO_FILE")
+    if not info_file:
+        return
+
+    Path(info_file).write_text(
+        f"{name}\n{frontend}\n{settings_file}\n",
+        encoding="utf-8",
+    )
+
+
+def vboxmanage_vm_exists(name: str) -> bool:
+    result = subprocess.run(
+        ["VBoxManage", "showvminfo", name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
+def vboxmanage_vm_state(name: str) -> str | None:
+    try:
+        output = run_vboxmanage(
+            ["showvminfo", name, "--machinereadable"],
+            capture=True,
+        )
+    except subprocess.CalledProcessError:
+        return None
+
+    for line in output.splitlines():
+        if line.startswith("VMState="):
+            return line.split("=", 1)[1].strip().strip('"')
+    return None
+
+
+def delete_existing_vboxmanage_vm(name: str, machine_folder: Path):
+    if vboxmanage_vm_exists(name):
+        state = vboxmanage_vm_state(name)
+        if state in {"running", "paused", "stuck"}:
+            raise RuntimeError(
+                f"VM {name!r} is {state}. Power it off before overwriting."
+            )
+
+        print(f"Deleting registered VM {name!r}...")
+        run_vboxmanage(["unregistervm", name, "--delete"])
+
+    if machine_folder.exists():
+        print(f"Removing existing VM folder: {machine_folder}")
+        shutil.rmtree(machine_folder)
+
+
+def close_vboxmanage_hdds_by_location(path: Path):
+    path = path.expanduser().resolve()
+    output = run_vboxmanage(["list", "hdds", "--long"], capture=True)
+    current_uuid = None
+    current_location = None
+
+    def close_current():
+        if current_uuid and current_location == str(path):
+            print(f"Removing stale medium registry entry: {current_uuid}")
+            run_vboxmanage(["closemedium", "disk", current_uuid])
+
+    for line in output.splitlines():
+        if line.startswith("UUID:"):
+            close_current()
+            current_uuid = line.split(":", 1)[1].strip()
+            current_location = None
+        elif line.startswith("Location:"):
+            current_location = line.split(":", 1)[1].strip()
+
+    close_current()
+
+
+def find_auxiliary_unattended_iso(machine_folder: Path) -> Path:
+    matches = sorted(machine_folder.glob("Unattended-*-aux-iso.viso"))
+    if not matches:
+        raise FileNotFoundError(
+            f"Could not find generated unattended auxiliary ISO in {machine_folder}"
+        )
+    return matches[-1]
+
+
+def ensure_vboxmanage_install_media(name: str, machine_folder: Path, iso_path: Path):
+    aux_iso = find_auxiliary_unattended_iso(machine_folder)
+
+    run_vboxmanage([
+        "storagectl",
+        name,
+        "--name=SATA",
+        "--portcount",
+        "3",
+    ])
+
+    for port in ("1", "2"):
+        subprocess.run(
+            [
+                "VBoxManage",
+                "storageattach",
+                name,
+                "--storagectl=SATA",
+                f"--port={port}",
+                "--device=0",
+                "--type=dvddrive",
+                "--medium=none",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    run_vboxmanage([
+        "storageattach",
+        name,
+        "--storagectl=SATA",
+        "--port=1",
+        "--device=0",
+        "--type=dvddrive",
+        f"--medium={iso_path}",
+    ])
+    run_vboxmanage([
+        "storageattach",
+        name,
+        "--storagectl=SATA",
+        "--port=2",
+        "--device=0",
+        "--type=dvddrive",
+        f"--medium={aux_iso}",
+    ])
+    run_vboxmanage([
+        "modifyvm",
+        name,
+        "--boot1=dvd",
+        "--boot2=disk",
+        "--boot3=none",
+        "--boot4=none",
+    ])
+
+
+def prepare_vboxmanage_target(name: str, machine_folder: Path):
+    vm_exists = vboxmanage_vm_exists(name)
+    folder_exists = machine_folder.exists()
+
+    if not vm_exists and not folder_exists:
+        return
+
+    reasons = []
+    if vm_exists:
+        reasons.append(f"a registered VM named {name!r} already exists")
+    if folder_exists:
+        reasons.append(f"a VM folder already exists at {machine_folder}")
+
+    detail = "Cannot create a fresh VM because " + " and ".join(reasons) + "."
+    if not confirm_overwrite(name, detail):
+        raise RuntimeError("Overwrite cancelled.")
+
+    delete_existing_vboxmanage_vm(name, machine_folder)
+
+
+def get_vboxmanage_default_machine_folder() -> Path:
+    output = run_vboxmanage(["list", "systemproperties"], capture=True)
+    for line in output.splitlines():
+        if line.startswith("Default machine folder:"):
+            return Path(line.split(":", 1)[1].strip()).expanduser()
+    raise RuntimeError("Could not determine VirtualBox default machine folder.")
+
+
 def machine_exists(vbox, mgr, name: str) -> bool:
     return any(m.name == name for m in mgr.getArray(vbox, "machines"))
 
@@ -176,6 +409,53 @@ def machine_exists(vbox, mgr, name: str) -> bool:
 def machine_folder_exists(vbox, name: str) -> bool:
     machine_folder = Path(vbox.systemProperties.defaultMachineFolder) / name
     return machine_folder.exists()
+
+
+def find_machine_by_name(vbox, mgr, name: str):
+    for machine in mgr.getArray(vbox, "machines"):
+        if machine.name == name:
+            return machine
+    return None
+
+
+def delete_existing_api_vm(vbox, mgr, constants, name: str, machine_folder: Path):
+    machine = find_machine_by_name(vbox, mgr, name)
+    if machine is not None:
+        if machine.state != constants.MachineState_PoweredOff:
+            raise RuntimeError(
+                f"VM {name!r} is not powered off. Power it off before "
+                "overwriting."
+            )
+
+        print(f"Deleting registered VM {name!r}...")
+        media = machine.unregister(constants.CleanupMode_DetachAllReturnHardDisksOnly)
+        progress = machine.deleteConfig(media)
+        progress_wait(progress, "Existing VM deletion")
+
+    if machine_folder.exists():
+        print(f"Removing existing VM folder: {machine_folder}")
+        shutil.rmtree(machine_folder)
+
+
+def prepare_api_target(vbox, mgr, constants, name: str):
+    machine_folder = Path(vbox.systemProperties.defaultMachineFolder) / name
+    vm_exists = find_machine_by_name(vbox, mgr, name) is not None
+    folder_exists = machine_folder.exists()
+
+    if not vm_exists and not folder_exists:
+        return
+
+    reasons = []
+    if vm_exists:
+        reasons.append(f"a registered VM named {name!r} already exists")
+    if folder_exists:
+        reasons.append(f"a VM folder already exists at {machine_folder}")
+
+    detail = "Cannot create a fresh VM because " + " and ".join(reasons) + "."
+    if not confirm_overwrite(name, detail):
+        raise RuntimeError("Overwrite cancelled.")
+
+    delete_existing_api_vm(vbox, mgr, constants, name, machine_folder)
 
 
 def find_controller_for_bus(machine, mgr, bus):
@@ -307,6 +587,213 @@ def attach_disk(
     return disk_path
 
 
+def create_windows_vm_vboxmanage(config_path: Path):
+    cfg = load_yaml(config_path)
+
+    name = get_vm_name(str(get_required(cfg, "vm", "name")))
+    os_type = str(cfg["vm"].get("os_type", "Windows11_64"))
+
+    hardware = get_required(cfg, "hardware")
+    memory_mb = int(hardware.get("memory_mb", 8192))
+    cpus = int(hardware.get("cpus", 4))
+    vram_mb = int(hardware.get("vram_mb", 128))
+
+    storage = get_required(cfg, "storage")
+    disk_gb = int(storage.get("disk_gb", 120))
+    disk_format = str(storage.get("format", "VDI")).upper()
+    dynamic = bool(storage.get("dynamic", True))
+
+    installation = get_required(cfg, "installation")
+    iso_path = resolve_config_path(
+        str(get_required(cfg, "installation", "iso")),
+        config_path,
+    )
+    image_index = installation.get("image_index")
+
+    if not iso_path.is_file():
+        raise FileNotFoundError(f"Windows ISO not found: {iso_path}")
+    if memory_mb < 4096:
+        raise ValueError("Windows 11 requires at least 4096 MB RAM.")
+    if cpus < 2:
+        raise ValueError("Windows 11 requires at least 2 vCPUs.")
+    if disk_gb < 64:
+        raise ValueError("Windows 11 requires at least a 64 GB disk.")
+    if vram_mb <= 0:
+        raise ValueError("Video RAM must be greater than 0 MB.")
+    if disk_format != "VDI":
+        raise ValueError("storage.format must be VDI for this project.")
+    if image_index is not None and int(image_index) < 1:
+        raise ValueError("installation.image_index must be 1 or greater.")
+
+    default_machine_folder = get_vboxmanage_default_machine_folder()
+    machine_folder = default_machine_folder / name
+    prepare_vboxmanage_target(name, machine_folder)
+    close_vboxmanage_hdds_by_location(
+        machine_folder / f"{name}.{disk_format.lower()}"
+    )
+
+    password, product_key = get_install_credentials()
+
+    print(f"VirtualBox: {run_vboxmanage(['--version'], capture=True).strip()}")
+    print(f"VM name:    {name}")
+    print(f"ISO:        {iso_path}")
+
+    print("Creating VM from VirtualBox Windows defaults...")
+    run_vboxmanage([
+        "createvm",
+        f"--name={name}",
+        "--platform-architecture=x86",
+        f"--ostype={os_type}",
+        "--default",
+        "--register",
+    ])
+
+    try:
+        network = cfg.get("network", {})
+        network_mode = str(network.get("mode", "nat")).lower()
+        modify_args = [
+            "modifyvm",
+            name,
+            f"--memory={memory_mb}",
+            f"--cpus={cpus}",
+            "--cpu-execution-cap=100",
+            f"--vram={vram_mb}",
+            "--clipboard-mode=bidirectional"
+            if cfg.get("integration", {}).get("shared_clipboard", True)
+            else "--clipboard-mode=disabled",
+            "--drag-and-drop=bidirectional"
+            if cfg.get("integration", {}).get("drag_and_drop", False)
+            else "--drag-and-drop=disabled",
+        ]
+
+        if network_mode == "nat":
+            modify_args.append("--nic1=nat")
+        elif network_mode == "bridged":
+            interface = network.get("interface")
+            if not interface:
+                raise ValueError(
+                    "network.interface is required for bridged networking."
+                )
+            modify_args.extend([
+                "--nic1=bridged",
+                f"--bridge-adapter1={interface}",
+            ])
+        else:
+            raise ValueError(
+                f"Unsupported network.mode {network_mode!r}; use nat or bridged."
+            )
+
+        run_vboxmanage(modify_args)
+        run_vboxmanage([
+            "modifyvm",
+            name,
+            "--description",
+            (
+                f"Provisioned from {config_path.name}. "
+                f"{cpus} vCPU, {memory_mb} MB RAM, {disk_gb} GB disk."
+            ),
+        ])
+
+        disk_path = machine_folder / f"{name}.{disk_format.lower()}"
+        if disk_path.exists():
+            raise FileExistsError(f"Virtual disk already exists: {disk_path}")
+
+        print(
+            f"Creating {'dynamic' if dynamic else 'fixed'} "
+            f"{disk_gb} GB {disk_format} disk..."
+        )
+        run_vboxmanage([
+            "createmedium",
+            "disk",
+            f"--filename={disk_path}",
+            f"--size={disk_gb * 1024}",
+            f"--format={disk_format}",
+            f"--variant={'Standard' if dynamic else 'Fixed'}",
+        ])
+        run_vboxmanage([
+            "storageattach",
+            name,
+            "--storagectl=SATA",
+            "--port=0",
+            "--device=0",
+            "--type=hdd",
+            f"--medium={disk_path}",
+        ])
+
+        unattended = get_required(cfg, "unattended")
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8") as password_file:
+            password_file.write(password)
+            password_file.flush()
+
+            runtime = cfg.get("runtime", {})
+            start_after_create = bool(runtime.get("start_after_create", True))
+            frontend = str(runtime.get("frontend", "gui"))
+            defer_start = env_enabled("VBOX_DEFER_START")
+
+            unattended_args = [
+                "unattended",
+                "install",
+                name,
+                f"--iso={iso_path}",
+                f"--user={unattended.get('username', 'rob')}",
+                f"--user-password-file={password_file.name}",
+                f"--admin-password-file={password_file.name}",
+                "--full-user-name="
+                f"{unattended.get('full_name', unattended.get('username', 'rob'))}",
+                f"--locale={unattended.get('locale', 'en_US')}",
+                f"--country={unattended.get('country', 'US')}",
+                "--time-zone="
+                f"{unattended.get('timezone', 'Eastern Standard Time')}",
+                f"--hostname={unattended.get('hostname', 'win11-lab.local')}",
+                f"--image-index={int(image_index or 1)}",
+                "--install-additions"
+                if unattended.get("install_guest_additions", True)
+                else "--no-install-additions",
+                f"--start-vm={frontend}"
+                if start_after_create and not defer_start
+                else "--start-vm=none",
+            ]
+            if product_key:
+                unattended_args.append(f"--key={product_key}")
+
+            print(
+                "Creating Windows unattended answer media and "
+                "reconfiguring VM..."
+            )
+            run_vboxmanage(unattended_args, capture=True)
+            ensure_vboxmanage_install_media(name, machine_folder, iso_path)
+
+        print()
+        print("Provisioning prepared successfully.")
+        print(f"Disk: {disk_path}")
+        if start_after_create and defer_start:
+            write_created_vm_info(
+                name,
+                frontend,
+                machine_folder / f"{name}.vbox",
+            )
+            print(f'Starting is deferred to the host wrapper: "{name}"')
+        elif start_after_create:
+            print()
+            print(
+                "Windows Setup is now running unattended. "
+                "When setup finishes, log in with the local account "
+                "defined in vm.yaml and the password you supplied "
+                "at the interactive prompt."
+            )
+        else:
+            print(f'Start it later with: VBoxManage startvm "{name}" --type gui')
+
+    except Exception:
+        print(
+            "\nProvisioning failed after the VM was registered.\n"
+            "The partially created VM was NOT deleted automatically "
+            "to avoid destroying anything unexpectedly.",
+            file=sys.stderr,
+        )
+        raise
+
+
 def configure_unattended(
     vbox,
     machine,
@@ -331,7 +818,8 @@ def configure_unattended(
     )
     unattended.userPassword = password
     unattended.adminPassword = password
-    unattended.productKey = product_key
+    if product_key:
+        unattended.productKey = product_key
     if "image_index" in installation_cfg:
         unattended.imageIndex = int(installation_cfg["image_index"])
 
@@ -397,10 +885,16 @@ def start_vm(machine, vbox, mgr, frontend: str):
             pass
 
 
-def create_windows_vm(config_path: Path):
+def create_windows_vm_api(config_path: Path):
+    if VirtualBoxManager is None:
+        raise RuntimeError(
+            "vboxapi is not available in this Python installation: "
+            f"{VBOXAPI_IMPORT_ERROR}"
+        )
+
     cfg = load_yaml(config_path)
 
-    name = str(get_required(cfg, "vm", "name"))
+    name = get_vm_name(str(get_required(cfg, "vm", "name")))
     os_type = str(cfg["vm"].get("os_type", "Windows11_64"))
 
     hardware = get_required(cfg, "hardware")
@@ -413,9 +907,10 @@ def create_windows_vm(config_path: Path):
     disk_format = str(storage.get("format", "VDI")).upper()
     dynamic = bool(storage.get("dynamic", True))
 
-    iso_path = Path(
-        get_required(cfg, "installation", "iso")
-    ).expanduser().resolve()
+    iso_path = resolve_config_path(
+        str(get_required(cfg, "installation", "iso")),
+        config_path,
+    )
     image_index = cfg["installation"].get("image_index")
 
     if not iso_path.is_file():
@@ -438,16 +933,7 @@ def create_windows_vm(config_path: Path):
     vbox = mgr.getVirtualBox()
     c = mgr.constants
 
-    if machine_exists(vbox, mgr, name):
-        raise RuntimeError(
-            f"A registered VM named {name!r} already exists."
-        )
-    if machine_folder_exists(vbox, name):
-        raise RuntimeError(
-            "A VM folder already exists for this name. Remove or rename it "
-            f"before provisioning: "
-            f"{Path(vbox.systemProperties.defaultMachineFolder) / name}"
-        )
+    prepare_api_target(vbox, mgr, c, name)
 
     password, product_key = get_install_credentials()
 
@@ -543,6 +1029,15 @@ def create_windows_vm(config_path: Path):
             file=sys.stderr,
         )
         raise
+
+
+def create_windows_vm(config_path: Path):
+    backend = os.environ.get("VBOX_BACKEND", "api").lower()
+    if backend in {"vboxmanage", "cli"}:
+        return create_windows_vm_vboxmanage(config_path)
+    if backend == "api":
+        return create_windows_vm_api(config_path)
+    raise ValueError("VBOX_BACKEND must be 'api' or 'vboxmanage'.")
 
 
 def main():
