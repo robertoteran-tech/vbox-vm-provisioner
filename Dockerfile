@@ -10,8 +10,10 @@ RUN apt-get update \
         libpng16-16t64 \
         libvpx9 \
         libxml2 \
+        openssl \
         python3 \
         python3-yaml \
+        xorriso \
     && rm -rf /var/lib/apt/lists/*
 
 ENV VBOX_INSTALL_PATH=/usr/lib/virtualbox

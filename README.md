@@ -1,6 +1,6 @@
 # Portable VirtualBox VM Provisioning
 
-This project creates unattended Windows 11 VirtualBox VMs from a YAML config.
+This project creates unattended VirtualBox VMs from YAML profiles.
 The main goal is to keep the provisioning environment portable while still
 using the VirtualBox installation and kernel drivers from the Linux host.
 
@@ -8,9 +8,10 @@ using the VirtualBox installation and kernel drivers from the Linux host.
 
 - Builds a small Docker image with Python and runtime libraries.
 - Mounts the host VirtualBox installation into the container.
-- Reads a VM definition from `machines/windows11-standard/vm.yaml`.
-- Prompts for VM name, Windows password, and optional product key.
-- Creates the VM, disk, and unattended Windows install media.
+- Reads a VM definition from `machines/windows11-standard/vm.yaml` or
+  `machines/kali-standard/vm.yaml`.
+- Prompts for VM name and guest OS credentials.
+- Creates the VM, disk, and unattended install media.
 - Starts the VM from the host VirtualBox installation.
 
 ## Requirements
@@ -22,7 +23,7 @@ The host machine must already have:
 - VirtualBox kernel modules loaded on the host.
 - Your user in the `docker` group.
 - Your user in the `vboxusers` group.
-- A Windows ISO placed under `isos/`.
+- The required OS ISO files placed under `isos/`.
 
 This project does not install VirtualBox. The container uses these host paths:
 
@@ -40,13 +41,17 @@ This project does not install VirtualBox. The container uses these host paths:
 |-- Dockerfile
 |-- README.md
 |-- isos/
+|   |-- kali-linux-2026.1-installer-amd64.iso
 |   `-- Win11_25H2_English_x64_v2.iso
 |-- machines/
+|   |-- kali-standard/
+|   |   |-- README.txt
+|   |   `-- vm.yaml
 |   `-- windows11-standard/
 |       |-- README.txt
 |       `-- vm.yaml
 `-- scripts/
-    |-- create_windows_vm.py
+    |-- create_virtualbox_vm.py
     `-- docker-provision.sh
 ```
 
@@ -75,7 +80,13 @@ Then create a VM:
 scripts/docker-provision.sh machines/windows11-standard/vm.yaml
 ```
 
-The script prompts for:
+Or create a Kali Linux VM:
+
+```bash
+scripts/docker-provision.sh machines/kali-standard/vm.yaml
+```
+
+Windows profiles prompt for:
 
 ```text
 VM name [windows11-standard]:
@@ -83,6 +94,15 @@ Delete existing VM/files for '...' and recreate it? Type yes to continue:
 Windows VM password:
 Confirm Windows VM password:
 Windows product key (blank to skip):
+```
+
+Kali profiles prompt for:
+
+```text
+VM name [kali-standard]:
+Delete existing VM/files for '...' and recreate it? Type yes to continue:
+Kali user password:
+Confirm Kali user password:
 ```
 
 At the VM name prompt, press Enter to use the YAML default or type a new name.
@@ -96,15 +116,22 @@ activate later.
 You can run the Python script directly:
 
 ```bash
-python3 scripts/create_windows_vm.py machines/windows11-standard/vm.yaml
+python3 scripts/create_virtualbox_vm.py machines/windows11-standard/vm.yaml
 ```
 
 Native runs default to the VirtualBox Python API backend. To use the same
 `VBoxManage` backend as Docker:
 
 ```bash
-VBOX_BACKEND=vboxmanage python3 scripts/create_windows_vm.py \
+VBOX_BACKEND=vboxmanage python3 scripts/create_virtualbox_vm.py \
   machines/windows11-standard/vm.yaml
+```
+
+Kali profiles require the `vboxmanage` backend:
+
+```bash
+VBOX_BACKEND=vboxmanage python3 scripts/create_virtualbox_vm.py \
+  machines/kali-standard/vm.yaml
 ```
 
 ## Setting The VM Name Non-Interactively
@@ -171,6 +198,18 @@ installation:
 
 The `image_index` selects the Windows edition from the ISO. The current config
 uses index `1`, which is Windows 11 Home for the listed ISO.
+
+The Kali profile uses:
+
+```text
+machines/kali-standard/vm.yaml
+```
+
+It generates a temporary autoinstall ISO from:
+
+```text
+isos/kali-linux-2026.1-installer-amd64.iso
+```
 
 ## Common Commands
 

@@ -287,7 +287,7 @@ if [[ "${MODE}" == "check" ]]; then
 else
     docker_args+=(
         "${IMAGE_NAME}"
-        "${PROJECT_ROOT}/scripts/create_windows_vm.py"
+        "${PROJECT_ROOT}/scripts/create_virtualbox_vm.py"
         "${CONFIG_PATH}"
     )
 fi

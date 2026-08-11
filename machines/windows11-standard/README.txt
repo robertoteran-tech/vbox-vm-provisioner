@@ -3,7 +3,7 @@ Windows 11 unattended VirtualBox profile
 
 Files
 -----
-create_windows_vm.py
+create_virtualbox_vm.py
     Creates the VM and configures VirtualBox's unattended Windows installer.
 
 vm.yaml
@@ -11,7 +11,7 @@ vm.yaml
 
 Recommended project locations
 -----------------------------
-~/vbox-environment/scripts/create_windows_vm.py
+~/vbox-environment/scripts/create_virtualbox_vm.py
 ~/vbox-environment/machines/windows11-standard/vm.yaml
 ~/vbox-environment/isos/Win11_25H2_English_x64_v2.iso
 
@@ -35,7 +35,7 @@ not written to vm.yaml.
 
 Run
 ---
-python3 ~/vbox-environment/scripts/create_windows_vm.py \
+python3 ~/vbox-environment/scripts/create_virtualbox_vm.py \
   ~/vbox-environment/machines/windows11-standard/vm.yaml
 
 Docker smoke test

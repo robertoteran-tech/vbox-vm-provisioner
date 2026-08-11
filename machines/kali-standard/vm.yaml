@@ -1,0 +1,45 @@
+# Fully unattended Kali Linux VM
+#
+# Credentials are NOT stored here. The provisioning script prompts for the
+# Kali user password at runtime.
+
+vm:
+  name: kali-standard
+  os_family: kali
+  os_type: Debian13_64
+
+hardware:
+  memory_mb: 4096
+  cpus: 2
+  vram_mb: 128
+
+storage:
+  disk_gb: 80
+  format: VDI
+  dynamic: true
+
+installation:
+  iso: ../../isos/kali-linux-2026.1-installer-amd64.iso
+  desktop: xfce
+
+network:
+  mode: nat
+
+integration:
+  shared_clipboard: true
+  drag_and_drop: false
+
+unattended:
+  username: kali
+  full_name: Kali
+  hostname: kali-workstation
+
+  # Debian/Kali timezone name.
+  timezone: US/Eastern
+  locale: en_US
+  keyboard_layout: us
+  country: US
+
+runtime:
+  start_after_create: true
+  frontend: gui
