@@ -744,7 +744,7 @@ def create_windows_vm_vboxmanage(config_path: Path):
                 f"--country={unattended.get('country', 'US')}",
                 "--time-zone="
                 f"{unattended.get('timezone', 'Eastern Standard Time')}",
-                f"--hostname={unattended.get('hostname', 'win11-lab.local')}",
+                f"--hostname={unattended.get('hostname', 'win11-workstation.local')}",
                 f"--image-index={int(image_index or 1)}",
                 "--install-additions"
                 if unattended.get("install_guest_additions", True)
@@ -824,7 +824,7 @@ def configure_unattended(
         unattended.imageIndex = int(installation_cfg["image_index"])
 
     unattended.hostname = str(
-        unattended_cfg.get("hostname", "win11-lab.local")
+        unattended_cfg.get("hostname", "win11-workstation.local")
     )
     unattended.timeZone = str(
         unattended_cfg.get("timezone", "Eastern Standard Time")

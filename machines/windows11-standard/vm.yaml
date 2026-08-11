@@ -7,7 +7,7 @@
 # The Windows product key should match the selected edition below.
 
 vm:
-  name: windows11-python-test
+  name: windows11-standard
   os_type: Windows11_64
 
 hardware:
@@ -54,7 +54,7 @@ integration:
 unattended:
   username: rob
   full_name: Rob
-  hostname: win11-lab.local
+  hostname: win11-workstation.local
 
   timezone: Eastern Standard Time
   locale: en_US

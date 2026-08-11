@@ -1,11 +1,10 @@
-Windows 11 unattended VirtualBox builder
+Windows 11 unattended VirtualBox profile
 ==========================================
 
 Files
 -----
 create_windows_vm.py
-    Creates the VM with the VirtualBox Python Main API and configures
-    VirtualBox's unattended Windows installer.
+    Creates the VM and configures VirtualBox's unattended Windows installer.
 
 vm.yaml
     Declarative VM + Windows installation configuration.
@@ -13,18 +12,19 @@ vm.yaml
 Recommended project locations
 -----------------------------
 ~/vbox-environment/scripts/create_windows_vm.py
-~/vbox-environment/machines/windows11-python-test/vm.yaml
+~/vbox-environment/machines/windows11-standard/vm.yaml
 ~/vbox-environment/isos/Win11_25H2_English_x64_v2.iso
 
-Ubuntu dependency
+Host requirements
 -----------------
-sudo apt install -y python3-yaml
+Docker and VirtualBox must already be installed on the host. The Docker wrapper
+provides the Python runtime and mounts the host VirtualBox installation.
 
 Secrets
 -------
 Do not put the Windows product key or Windows password in vm.yaml.
 
-The builder prompts for both values at runtime:
+The provisioner prompts for both values at runtime:
 
 * VM name: visible input; press Enter to use vm.yaml's default name.
 * Windows VM password: hidden input.
@@ -36,7 +36,7 @@ not written to vm.yaml.
 Run
 ---
 python3 ~/vbox-environment/scripts/create_windows_vm.py \
-  ~/vbox-environment/machines/windows11-python-test/vm.yaml
+  ~/vbox-environment/machines/windows11-standard/vm.yaml
 
 Docker smoke test
 -----------------
@@ -48,7 +48,7 @@ Windows password, or product key.
 Create a VM with Docker
 -----------------------
 ~/vbox-environment/scripts/docker-provision.sh \
-  ~/vbox-environment/machines/windows11-python-test/vm.yaml
+  ~/vbox-environment/machines/windows11-standard/vm.yaml
 
 This command prompts for VM name, Windows password, and optional product key.
 If the VM name already exists, it asks whether to delete and recreate it. Type

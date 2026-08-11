@@ -8,7 +8,7 @@ using the VirtualBox installation and kernel drivers from the Linux host.
 
 - Builds a small Docker image with Python and runtime libraries.
 - Mounts the host VirtualBox installation into the container.
-- Reads a VM definition from `machines/windows11-python-test/vm.yaml`.
+- Reads a VM definition from `machines/windows11-standard/vm.yaml`.
 - Prompts for VM name, Windows password, and optional product key.
 - Creates the VM, disk, and unattended Windows install media.
 - Starts the VM from the host VirtualBox installation.
@@ -37,17 +37,17 @@ This project does not install VirtualBox. The container uses these host paths:
 
 ```text
 .
-├── Dockerfile
-├── README.md
-├── isos/
-│   └── Win11_25H2_English_x64_v2.iso
-├── machines/
-│   └── windows11-python-test/
-│       ├── README.txt
-│       └── vm.yaml
-└── scripts/
-    ├── create_windows_vm.py
-    └── docker-provision.sh
+|-- Dockerfile
+|-- README.md
+|-- isos/
+|   `-- Win11_25H2_English_x64_v2.iso
+|-- machines/
+|   `-- windows11-standard/
+|       |-- README.txt
+|       `-- vm.yaml
+`-- scripts/
+    |-- create_windows_vm.py
+    `-- docker-provision.sh
 ```
 
 Large files such as ISOs, VDI disks, generated unattended files, and logs are
@@ -72,13 +72,13 @@ VirtualBox: 7.2.14r174565
 Then create a VM:
 
 ```bash
-scripts/docker-provision.sh machines/windows11-python-test/vm.yaml
+scripts/docker-provision.sh machines/windows11-standard/vm.yaml
 ```
 
 The script prompts for:
 
 ```text
-VM name [windows11-python-test]:
+VM name [windows11-standard]:
 Delete existing VM/files for '...' and recreate it? Type yes to continue:
 Windows VM password:
 Confirm Windows VM password:
@@ -96,7 +96,7 @@ activate later.
 You can run the Python script directly:
 
 ```bash
-python3 scripts/create_windows_vm.py machines/windows11-python-test/vm.yaml
+python3 scripts/create_windows_vm.py machines/windows11-standard/vm.yaml
 ```
 
 Native runs default to the VirtualBox Python API backend. To use the same
@@ -104,7 +104,7 @@ Native runs default to the VirtualBox Python API backend. To use the same
 
 ```bash
 VBOX_BACKEND=vboxmanage python3 scripts/create_windows_vm.py \
-  machines/windows11-python-test/vm.yaml
+  machines/windows11-standard/vm.yaml
 ```
 
 ## Setting The VM Name Non-Interactively
@@ -112,8 +112,8 @@ VBOX_BACKEND=vboxmanage python3 scripts/create_windows_vm.py \
 Use `VBOX_VM_NAME`:
 
 ```bash
-VBOX_VM_NAME=win11-test-2 scripts/docker-provision.sh \
-  machines/windows11-python-test/vm.yaml
+VBOX_VM_NAME=win11-workstation-02 scripts/docker-provision.sh \
+  machines/windows11-standard/vm.yaml
 ```
 
 This is useful when creating multiple VMs from the same YAML template.
@@ -123,7 +123,7 @@ This is useful when creating multiple VMs from the same YAML template.
 If the chosen VM name already exists, the script asks before deleting it:
 
 ```text
-Delete existing VM/files for 'Windows_Machine' and recreate it? Type yes to continue:
+Delete existing VM/files for 'Windows_Workstation' and recreate it? Type yes to continue:
 ```
 
 Type exactly:
@@ -138,8 +138,8 @@ it off first.
 For non-interactive runs, set:
 
 ```bash
-VBOX_OVERWRITE=1 VBOX_VM_NAME=Windows_Machine scripts/docker-provision.sh \
-  machines/windows11-python-test/vm.yaml
+VBOX_OVERWRITE=1 VBOX_VM_NAME=Windows_Workstation scripts/docker-provision.sh \
+  machines/windows11-standard/vm.yaml
 ```
 
 ## VM Configuration
@@ -147,14 +147,14 @@ VBOX_OVERWRITE=1 VBOX_VM_NAME=Windows_Machine scripts/docker-provision.sh \
 Edit:
 
 ```text
-machines/windows11-python-test/vm.yaml
+machines/windows11-standard/vm.yaml
 ```
 
 Important settings:
 
 ```yaml
 vm:
-  name: windows11-python-test
+  name: windows11-standard
 
 hardware:
   memory_mb: 8192
@@ -183,26 +183,26 @@ VBoxManage list vms
 Start an existing VM:
 
 ```bash
-VBoxManage startvm "Windows_Machine" --type gui
+VBoxManage startvm "Windows_Workstation" --type gui
 ```
 
 Show VM state:
 
 ```bash
-VBoxManage showvminfo "Windows_Machine" --machinereadable | grep VMState
+VBoxManage showvminfo "Windows_Workstation" --machinereadable | grep VMState
 ```
 
 Delete a VM and its files:
 
 ```bash
-VBoxManage unregistervm "Windows_Machine" --delete
+VBoxManage unregistervm "Windows_Workstation" --delete
 ```
 
 Use Docker privileged mode if device access fails:
 
 ```bash
 VBOX_DOCKER_PRIVILEGED=1 scripts/docker-provision.sh \
-  machines/windows11-python-test/vm.yaml
+  machines/windows11-standard/vm.yaml
 ```
 
 ## Troubleshooting

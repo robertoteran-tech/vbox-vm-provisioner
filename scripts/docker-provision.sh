@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 IMAGE_NAME="${VBOX_ENV_IMAGE:-vbox-environment-provisioner:local}"
-DEFAULT_CONFIG_PATH="${PROJECT_ROOT}/machines/windows11-python-test/vm.yaml"
+DEFAULT_CONFIG_PATH="${PROJECT_ROOT}/machines/windows11-standard/vm.yaml"
 MODE="provision"
 CONFIG_PATH="${DEFAULT_CONFIG_PATH}"
 CREATED_VM_INFO_FILE=""
