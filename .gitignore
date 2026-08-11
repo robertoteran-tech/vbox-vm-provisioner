@@ -1,0 +1,39 @@
+# Python generated files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local Python environments and tooling caches
+.venv/
+venv/
+env/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Large installer media
+isos/*
+!isos/.gitkeep
+
+# VirtualBox disks, generated media, logs, and machine state
+*.vdi
+*.vmdk
+*.vhd
+*.hdd
+*.iso
+*.viso
+*.vbox-prev
+*.nvram
+*.sav
+*.log
+Logs/
+Snapshots/
+Unattended-*
+
+# Local OS/editor noise
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo

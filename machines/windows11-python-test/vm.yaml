@@ -1,0 +1,72 @@
+# Fully unattended Windows 11 VM
+#
+# Credentials are NOT stored here. The provisioning script prompts for the
+# Windows VM password and product key at runtime. The password prompt is
+# hidden; the product-key prompt is visible so it can be checked while typed.
+#
+# The Windows product key should match the selected edition below.
+
+vm:
+  name: windows11-python-test
+  os_type: Windows11_64
+
+hardware:
+  # Smooth Windows 11 profile for a 32 GB Ubuntu host.
+  memory_mb: 8192
+  cpus: 4
+  vram_mb: 128
+
+storage:
+  # Dynamic means the file grows as Windows uses space; it does not reserve
+  # the full 120 GB immediately.
+  disk_gb: 120
+  format: VDI
+  dynamic: true
+
+installation:
+  iso: /home/rob/vbox-environment/isos/Win11_25H2_English_x64_v2.iso
+  # This ISO contains multiple Windows editions. Pin the edition so Windows
+  # Setup does not stop at the product-key/edition screen.
+  #
+  # Detected indexes for Win11_25H2_English_x64_v2.iso:
+  #   1  Windows 11 Home
+  #   2  Windows 11 Home N
+  #   3  Windows 11 Home Single Language
+  #   4  Windows 11 Education
+  #   5  Windows 11 Education N
+  #   6  Windows 11 Pro
+  #   7  Windows 11 Pro N
+  #   8  Windows 11 Pro Education
+  #   9  Windows 11 Pro Education N
+  #   10 Windows 11 Pro for Workstations
+  #   11 Windows 11 Pro N for Workstations
+  image_index: 1
+
+network:
+  # NAT gives the VM internet access while keeping it behind the Ubuntu host.
+  mode: nat
+
+integration:
+  # Guest Additions are installed by the unattended setup.
+  shared_clipboard: true
+  drag_and_drop: false
+
+unattended:
+  username: rob
+  full_name: Rob
+  hostname: win11-lab.local
+
+  timezone: Eastern Standard Time
+  locale: en_US
+  keyboard_layout: us
+  country: US
+
+  install_guest_additions: true
+
+  # Faster and more reproducible initial install. Run Windows Update afterward.
+  avoid_updates_during_install: true
+
+runtime:
+  # Starts the installer as soon as provisioning has completed.
+  start_after_create: true
+  frontend: gui
